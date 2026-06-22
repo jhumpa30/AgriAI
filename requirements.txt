@@ -1,8 +1,8 @@
 streamlit
 numpy
 pandas
-scikit-learn
-pillow
-joblib
+scikit-learn==1.6.1
 tensorflow-cpu
+joblib
 requests
+huggingface_hub
