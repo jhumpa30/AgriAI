@@ -6,6 +6,7 @@ import pandas as pd
 import os
 import requests
 import tensorflow as tf
+from threading import Lock
 
 # -----------------------------
 # PAGE CONFIG
@@ -21,33 +22,36 @@ st.divider()
 # -----------------------------
 BASE_URL = "https://huggingface.co/Jhumpa30/agriai-models/resolve/main/"
 
-MODEL_FILES = {
-    "disease_risk_model.pkl",
-    "disease_risk_columns.pkl",
-    "yield_prediction_model.pkl",
-    "yield_prediction_columns.pkl",
-    "tea_yield_model_v3.pkl",
-    "tea_yield_columns_v3.pkl",
-    "tomato_yield_model_v2.pkl",
-    "tomato_yield_columns_v2.pkl",
-    "market_price_model_v2.pkl",
-    "market_price_scaler.pkl",
-    "market_price_columns_v2.pkl",
-    "best_crop_model.tflite"
-}
+MODEL_LOCK = Lock()   # prevents race conditions
 
 # -----------------------------
-# DOWNLOAD HELPER
+# SAFE DOWNLOAD (IMPORTANT FIX)
 # -----------------------------
 def get_file(filename):
     os.makedirs("models", exist_ok=True)
     path = os.path.join("models", filename)
 
-    if not os.path.exists(path):
-        url = BASE_URL + filename
-        r = requests.get(url)
-        with open(path, "wb") as f:
-            f.write(r.content)
+    if os.path.exists(path):
+        return path
+
+    url = BASE_URL + filename
+
+    with MODEL_LOCK:   # prevents double-download crashes
+        if os.path.exists(path):
+            return path
+
+        try:
+            r = requests.get(url, stream=True, timeout=60)
+            r.raise_for_status()
+
+            with open(path, "wb") as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+
+        except Exception as e:
+            st.error(f"Model download failed: {filename}")
+            raise e
 
     return path
 
@@ -60,11 +64,10 @@ if "predicted_yield" not in st.session_state:
 
 
 # -----------------------------
-# LOAD TFLITE MODEL
+# TFLITE MODEL (STABLE CACHE)
 # -----------------------------
 @st.cache_resource
 def load_disease_model():
-
     path = get_file("best_crop_model.tflite")
 
     interpreter = tf.lite.Interpreter(model_path=path)
@@ -74,7 +77,7 @@ def load_disease_model():
 
 
 # -----------------------------
-# LOAD OTHER MODELS
+# RISK MODEL
 # -----------------------------
 @st.cache_resource
 def load_risk_model():
@@ -83,6 +86,9 @@ def load_risk_model():
     return model, cols
 
 
+# -----------------------------
+# YIELD MODELS
+# -----------------------------
 @st.cache_resource
 def load_yield_models():
     return {
@@ -109,6 +115,9 @@ def load_yield_models():
     }
 
 
+# -----------------------------
+# PRICE MODEL
+# -----------------------------
 @st.cache_resource
 def load_price_model():
     return (
@@ -218,16 +227,16 @@ if predicted_class is not None:
 
     st.write("Crop:", crop_type)
 
-    crop_year = st.number_input("Year", value=2025)
-    area = st.number_input("Area", value=1.0)
-    rainfall_y = st.number_input("Annual Rainfall", value=1000.0)
-    fertilizer = st.number_input("Fertilizer", value=50.0)
-    pesticide = st.number_input("Pesticide", value=5.0)
-    avg_temp_y = st.number_input("Avg Temp", value=28.0)
-    max_temp = st.number_input("Max Temp", value=35.0)
-    min_temp = st.number_input("Min Temp", value=20.0)
+    crop_year = st.number_input("Year", value=2025, key="year")
+    area = st.number_input("Area", value=1.0, key="area")
+    rainfall_y = st.number_input("Annual Rainfall", value=1000.0, key="rain")
+    fertilizer = st.number_input("Fertilizer", value=50.0, key="fert")
+    pesticide = st.number_input("Pesticide", value=5.0, key="pest")
+    avg_temp_y = st.number_input("Avg Temp", value=28.0, key="temp")
+    max_temp = st.number_input("Max Temp", value=35.0, key="max")
+    min_temp = st.number_input("Min Temp", value=20.0, key="min")
 
-    if st.button("Predict Yield"):
+    if st.button("Predict Yield", key="yield_btn"):
 
         model, columns = yield_models[crop_type]
 
@@ -267,12 +276,12 @@ if predicted_class is not None:
 
     price_model, price_scaler, price_columns = load_price_model()
 
-    demand = st.number_input("Demand", value=1.0)
-    supply = st.number_input("Supply", value=1.0)
-    inflation = st.number_input("Inflation", value=5.0)
-    transport = st.number_input("Transport Cost", value=10.0)
+    demand = st.number_input("Demand", value=1.0, key="demand")
+    supply = st.number_input("Supply", value=1.0, key="supply")
+    inflation = st.number_input("Inflation", value=5.0, key="inflation")
+    transport = st.number_input("Transport Cost", value=10.0, key="transport")
 
-    if st.button("Predict Price"):
+    if st.button("Predict Price", key="price_btn"):
 
         if st.session_state.predicted_yield is None:
             st.error("Predict yield first")
