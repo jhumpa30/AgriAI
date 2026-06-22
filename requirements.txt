@@ -1,8 +1,8 @@
 streamlit
-tensorflow-cpu
 numpy
 pandas
-Pillow
 scikit-learn
+pillow
 joblib
-gdown
+tensorflow-cpu
+requests
