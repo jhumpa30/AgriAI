@@ -5,23 +5,53 @@ from PIL import Image
 import joblib
 import pandas as pd
 
+
 import os
 import gdown
 
+
 MODEL_DIR = "models"
 
-if not os.path.exists(MODEL_DIR):
+@st.cache_resource
+def download_models():
 
-    print("Downloading models...")
+    required_files = [
+        "best_crop_model.keras",
+        "disease_risk_model.pkl",
+        "disease_risk_columns.pkl",
+        "yield_prediction_model.pkl",
+        "yield_prediction_columns.pkl",
+        "tea_yield_model_v3.pkl",
+        "tea_yield_columns_v3.pkl",
+        "tomato_yield_model_v2.pkl",
+        "tomato_yield_columns_v2.pkl",
+        "market_price_model_v2.pkl",
+        "market_price_columns_v2.pkl",
+        "market_price_scaler.pkl"
+    ]
 
-    gdown.download_folder(
-        url="https://drive.google.com/drive/folders/1SZMYhNvGG8wkbmV0iLjOIEQQKWZYFYaQ",
-        output=MODEL_DIR,
-        quiet=False,
-        use_cookies=False
-    )
+    os.makedirs(MODEL_DIR, exist_ok=True)
 
-    print("Models downloaded.")
+    missing = False
+
+    for file in required_files:
+        if not os.path.exists(os.path.join(MODEL_DIR, file)):
+            missing = True
+            break
+
+    if missing:
+        print("Downloading models...")
+
+        gdown.download_folder(
+            url="https://drive.google.com/drive/folders/1SZMYhNvGG8wkbmV0iLjOIEQQKWZYFYaQ",
+            output=MODEL_DIR,
+            quiet=False,
+            use_cookies=False
+        )
+
+        print("Models downloaded.")
+
+download_models()
 
 # -----------------------------
 # PAGE CONFIG
