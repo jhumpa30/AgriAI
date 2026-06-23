@@ -183,35 +183,35 @@ if uploaded_file is not None:
     interpreter.set_tensor(input_details[0]['index'], img)
     interpreter.invoke()
 
-    prediction = interpreter.get_tensor(output_details[0]['index'])
-    prediction = np.array(prediction).flatten()
+prediction = interpreter.get_tensor(output_details[0]['index'])
+prediction = np.array(prediction).flatten()
 
-    # 🔥 FIX 2: stable softmax correction (prevents collapse to Tomato)
-    prediction = np.exp(prediction - np.max(prediction))
-    prediction = prediction / np.sum(prediction)
+# If model outputs logits, softmax once
+if np.max(prediction) > 1 or np.min(prediction) < 0:
+    exp = np.exp(prediction - np.max(prediction))
+    prediction = exp / np.sum(exp)
 
-    class_names = [
-        'Maize_Blight','Maize_CommonRust','Maize_GrayLeafSpot','Maize_Healthy',
-        'Potato_EarlyBlight','Potato_Healthy','Potato_LateBlight',
-        'Rice_BacterialLeafBlight','Rice_BrownSpot','Rice_Healthy','Rice_LeafBlast',
-        'Rice_LeafScald','Rice_SheathBlight',
-        'Tea_AlgalLeafSpot','Tea_Anthracnose','Tea_BirdEyeSpot','Tea_BrownBlight',
-        'Tea_GrayBlight','Tea_Healthy','Tea_RedLeafSpot','Tea_WhiteSpot',
-        'Tomato_BacterialSpot','Tomato_EarlyBlight','Tomato_Healthy','Tomato_LateBlight',
-        'Tomato_LeafMold','Tomato_MosaicVirus','Tomato_SeptoriaLeafSpot',
-        'Tomato_SpiderMites','Tomato_TargetSpot','Tomato_YellowLeafCurlVirus'
-    ]
+class_names = [
+    'Maize_Blight','Maize_CommonRust','Maize_GrayLeafSpot','Maize_Healthy',
+    'Potato_EarlyBlight','Potato_Healthy','Potato_LateBlight',
+    'Rice_BacterialLeafBlight','Rice_BrownSpot','Rice_Healthy','Rice_LeafBlast',
+    'Rice_LeafScald','Rice_SheathBlight',
+    'Tea_AlgalLeafSpot','Tea_Anthracnose','Tea_BirdEyeSpot','Tea_BrownBlight',
+    'Tea_GrayBlight','Tea_Healthy','Tea_RedLeafSpot','Tea_WhiteSpot',
+    'Tomato_BacterialSpot','Tomato_EarlyBlight','Tomato_Healthy','Tomato_LateBlight',
+    'Tomato_LeafMold','Tomato_MosaicVirus','Tomato_SeptoriaLeafSpot',
+    'Tomato_SpiderMites','Tomato_TargetSpot','Tomato_YellowLeafCurlVirus'
+]
 
-    idx = int(np.argmax(prediction))
-    confidence = float(np.max(prediction))
+idx = int(np.argmax(prediction))
+confidence = float(prediction[idx])
 
-    predicted_class = class_names[idx]
+predicted_class = class_names[idx]
 
-    st.write("Disease:", predicted_class)
-    st.write("Confidence:", confidence)
+st.write("Disease:", predicted_class)
+st.write("Confidence:", confidence)
 
-    gc.collect()
-
+gc.collect()
 
 # -----------------------------
 # HEALTH SCORE
