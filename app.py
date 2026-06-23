@@ -79,16 +79,6 @@ def load_risk_model():
 
 
 # -----------------------------
-# SHARED YIELD MODEL (IMPORTANT FIX)
-# -----------------------------
-@st.cache_resource
-def load_shared_yield_model():
-    model = joblib.load(get_file("yield_prediction_model.pkl"))
-    cols = joblib.load(get_file("yield_prediction_columns.pkl"))
-    return model, cols
-
-
-# -----------------------------
 # PRICE MODEL
 # -----------------------------
 @st.cache_resource
@@ -186,11 +176,9 @@ if predicted_class is not None:
 
 
 # -----------------------------
-# YIELD
+# YIELD (🔥 FIXED HERE)
 # -----------------------------
 if predicted_class is not None:
-
-    model, columns = load_shared_yield_model()
 
     crop_map = {
         "Rice": "rice",
@@ -214,6 +202,11 @@ if predicted_class is not None:
     min_temp = st.number_input("Min Temp", value=20.0)
 
     if st.button("Predict Yield"):
+
+        # 🔥 LAZY LOAD (ONLY WHEN NEEDED)
+        with st.spinner("Loading yield model..."):
+            model = joblib.load(get_file("yield_prediction_model.pkl"))
+            columns = joblib.load(get_file("yield_prediction_columns.pkl"))
 
         row = {c: 0 for c in columns}
 
@@ -242,6 +235,9 @@ if predicted_class is not None:
 
         st.write("Yield:", st.session_state.predicted_yield)
 
+        # 🔥 FREE MEMORY IMMEDIATELY
+        del model
+        del columns
         gc.collect()
 
 
