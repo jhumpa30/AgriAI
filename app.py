@@ -207,23 +207,35 @@ if uploaded_file is not None:
     interpreter.set_tensor(input_details[0]['index'], img)
     interpreter.invoke()
 
-    prediction = interpreter.get_tensor(output_details[0]['index'])
+   prediction = interpreter.get_tensor(output_details[0]['index'])
 
-    class_names = [
-        'Maize_Blight','Maize_CommonRust','Maize_GrayLeafSpot','Maize_Healthy',
-        'Potato_EarlyBlight','Potato_Healthy','Potato_LateBlight',
-        'Rice_BacterialLeafBlight','Rice_BrownSpot','Rice_Healthy','Rice_LeafBlast',
-        'Rice_LeafScald','Rice_SheathBlight',
-        'Tea_AlgalLeafSpot','Tea_Anthracnose','Tea_BirdEyeSpot','Tea_BrownBlight',
-        'Tea_GrayBlight','Tea_Healthy','Tea_RedLeafSpot','Tea_WhiteSpot',
-        'Tomato_BacterialSpot','Tomato_EarlyBlight','Tomato_Healthy','Tomato_LateBlight',
-        'Tomato_LeafMold','Tomato_MosaicVirus','Tomato_SeptoriaLeafSpot',
-        'Tomato_SpiderMites','Tomato_TargetSpot','Tomato_YellowLeafCurlVirus'
-    ]
+# 🔥 FIX 1: ensure proper probability format
+prediction = np.array(prediction)
 
-    predicted_class = class_names[np.argmax(prediction)]
-    confidence = float(np.max(prediction))
+# 🔥 FIX 2: prevent wrong axis issues (very common in TFLite)
+if len(prediction.shape) == 2:
+    prediction = prediction[0]
 
+class_names = [
+    'Maize_Blight','Maize_CommonRust','Maize_GrayLeafSpot','Maize_Healthy',
+    'Potato_EarlyBlight','Potato_Healthy','Potato_LateBlight',
+    'Rice_BacterialLeafBlight','Rice_BrownSpot','Rice_Healthy','Rice_LeafBlast',
+    'Rice_LeafScald','Rice_SheathBlight',
+    'Tea_AlgalLeafSpot','Tea_Anthracnose','Tea_BirdEyeSpot','Tea_BrownBlight',
+    'Tea_GrayBlight','Tea_Healthy','Tea_RedLeafSpot','Tea_WhiteSpot',
+    'Tomato_BacterialSpot','Tomato_EarlyBlight','Tomato_Healthy','Tomato_LateBlight',
+    'Tomato_LeafMold','Tomato_MosaicVirus','Tomato_SeptoriaLeafSpot',
+    'Tomato_SpiderMites','Tomato_TargetSpot','Tomato_YellowLeafCurlVirus'
+]
+
+idx = int(np.argmax(prediction))
+confidence = float(prediction[idx])
+
+# 🔥 FIX 3: hard safety check
+if idx >= len(class_names):
+    predicted_class = "Unknown"
+else:
+    predicted_class = class_names[idx]
     st.write("Disease:", predicted_class)
     st.write("Confidence:", confidence)
 
