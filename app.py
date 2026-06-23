@@ -57,12 +57,9 @@ if "predicted_yield" not in st.session_state:
 # -----------------------------
 def load_disease_model():
     if "tflite_model" not in st.session_state:
-
         path = get_file("best_crop_model.tflite")
-
         interpreter = tf.lite.Interpreter(model_path=path)
         interpreter.allocate_tensors()
-
         st.session_state.tflite_model = interpreter
 
     return st.session_state.tflite_model
@@ -83,15 +80,14 @@ def load_risk_model():
 # -----------------------------
 @st.cache_resource
 def load_price_model():
-    return (
-        joblib.load(get_file("market_price_model_v2.pkl")),
-        joblib.load(get_file("market_price_scaler.pkl")),
-        joblib.load(get_file("market_price_columns_v2.pkl"))
-    )
+    model = joblib.load(get_file("market_price_model_v2.pkl"))
+    scaler = joblib.load(get_file("market_price_scaler.pkl"))
+    cols = joblib.load(get_file("market_price_columns_v2.pkl"))
+    return model, scaler, cols
 
 
 # -----------------------------
-# RECOMMENDATION SYSTEM (ADDED)
+# RECOMMENDATION SYSTEM
 # -----------------------------
 HEALTHY_CLASSES = {
     "Maize_Healthy",
@@ -133,7 +129,6 @@ def generate_recommendations(disease, health_score, disease_risk):
 
     recommendations = []
 
-    # Health score
     if health_score >= 90:
         recommendations.append("Crop health is excellent.")
     elif health_score >= 70:
@@ -143,7 +138,6 @@ def generate_recommendations(disease, health_score, disease_risk):
     else:
         recommendations.append("Crop health is poor. Immediate intervention required.")
 
-    # Risk
     try:
         risk_val = float(disease_risk)
     except:
@@ -156,7 +150,6 @@ def generate_recommendations(disease, health_score, disease_risk):
     else:
         recommendations.append("Disease risk is low.")
 
-    # Disease
     if disease in HEALTHY_CLASSES:
         recommendations.append("No disease detected.")
         recommendations.append("Maintain current crop management practices.")
@@ -185,10 +178,11 @@ st.header("Upload Image")
 uploaded_file = st.file_uploader("Upload leaf image", type=["jpg", "jpeg", "png"])
 
 predicted_class = None
+disease_risk = 0
 
 
 # -----------------------------
-# DISEASE PREDICTION
+# DISEASE PREDICTION (FIXED)
 # -----------------------------
 if uploaded_file is not None:
 
@@ -207,35 +201,29 @@ if uploaded_file is not None:
     interpreter.set_tensor(input_details[0]['index'], img)
     interpreter.invoke()
 
-   prediction = interpreter.get_tensor(output_details[0]['index'])
+    prediction = interpreter.get_tensor(output_details[0]['index'])
+    prediction = np.array(prediction)
 
-# 🔥 FIX 1: ensure proper probability format
-prediction = np.array(prediction)
+    if len(prediction.shape) == 2:
+        prediction = prediction[0]
 
-# 🔥 FIX 2: prevent wrong axis issues (very common in TFLite)
-if len(prediction.shape) == 2:
-    prediction = prediction[0]
+    class_names = [
+        'Maize_Blight','Maize_CommonRust','Maize_GrayLeafSpot','Maize_Healthy',
+        'Potato_EarlyBlight','Potato_Healthy','Potato_LateBlight',
+        'Rice_BacterialLeafBlight','Rice_BrownSpot','Rice_Healthy','Rice_LeafBlast',
+        'Rice_LeafScald','Rice_SheathBlight',
+        'Tea_AlgalLeafSpot','Tea_Anthracnose','Tea_BirdEyeSpot','Tea_BrownBlight',
+        'Tea_GrayBlight','Tea_Healthy','Tea_RedLeafSpot','Tea_WhiteSpot',
+        'Tomato_BacterialSpot','Tomato_EarlyBlight','Tomato_Healthy','Tomato_LateBlight',
+        'Tomato_LeafMold','Tomato_MosaicVirus','Tomato_SeptoriaLeafSpot',
+        'Tomato_SpiderMites','Tomato_TargetSpot','Tomato_YellowLeafCurlVirus'
+    ]
 
-class_names = [
-    'Maize_Blight','Maize_CommonRust','Maize_GrayLeafSpot','Maize_Healthy',
-    'Potato_EarlyBlight','Potato_Healthy','Potato_LateBlight',
-    'Rice_BacterialLeafBlight','Rice_BrownSpot','Rice_Healthy','Rice_LeafBlast',
-    'Rice_LeafScald','Rice_SheathBlight',
-    'Tea_AlgalLeafSpot','Tea_Anthracnose','Tea_BirdEyeSpot','Tea_BrownBlight',
-    'Tea_GrayBlight','Tea_Healthy','Tea_RedLeafSpot','Tea_WhiteSpot',
-    'Tomato_BacterialSpot','Tomato_EarlyBlight','Tomato_Healthy','Tomato_LateBlight',
-    'Tomato_LeafMold','Tomato_MosaicVirus','Tomato_SeptoriaLeafSpot',
-    'Tomato_SpiderMites','Tomato_TargetSpot','Tomato_YellowLeafCurlVirus'
-]
+    idx = int(np.argmax(prediction))
+    confidence = float(prediction[idx])
 
-idx = int(np.argmax(prediction))
-confidence = float(prediction[idx])
+    predicted_class = class_names[idx] if idx < len(class_names) else "Unknown"
 
-# 🔥 FIX 3: hard safety check
-if idx >= len(class_names):
-    predicted_class = "Unknown"
-else:
-    predicted_class = class_names[idx]
     st.write("Disease:", predicted_class)
     st.write("Confidence:", confidence)
 
@@ -370,7 +358,7 @@ if predicted_class is not None:
 
 
 # -----------------------------
-# 🌿 RECOMMENDATIONS UI (ADDED)
+# RECOMMENDATIONS UI
 # -----------------------------
 st.header("Recommendations")
 
