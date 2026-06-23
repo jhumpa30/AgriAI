@@ -18,13 +18,10 @@ st.subheader("AI-Powered Agricultural Decision Support System")
 st.divider()
 
 # -----------------------------
-# HUGGING FACE BASE URL
+# SAFE DOWNLOAD
 # -----------------------------
 BASE_URL = "https://huggingface.co/Jhumpa30/agriai-models/resolve/main/"
 
-# -----------------------------
-# SAFE DOWNLOAD
-# -----------------------------
 def get_file(filename):
     os.makedirs("models", exist_ok=True)
     path = os.path.join("models", filename)
@@ -52,7 +49,7 @@ if "predicted_yield" not in st.session_state:
 
 
 # -----------------------------
-# DISEASE MODEL
+# MODEL LOADER
 # -----------------------------
 def load_disease_model():
     if "tflite_model" not in st.session_state:
@@ -63,9 +60,6 @@ def load_disease_model():
     return st.session_state.tflite_model
 
 
-# -----------------------------
-# RISK MODEL
-# -----------------------------
 @st.cache_resource
 def load_risk_model():
     model = joblib.load(get_file("disease_risk_model.pkl"))
@@ -73,9 +67,6 @@ def load_risk_model():
     return model, cols
 
 
-# -----------------------------
-# PRICE MODEL
-# -----------------------------
 @st.cache_resource
 def load_price_model():
     model = joblib.load(get_file("market_price_model_v2.pkl"))
@@ -85,18 +76,18 @@ def load_price_model():
 
 
 # -----------------------------
-# CLASS MAP
+# LABELS
 # -----------------------------
 class_names = [
-    'Maize_Blight', 'Maize_CommonRust', 'Maize_GrayLeafSpot', 'Maize_Healthy',
-    'Potato_EarlyBlight', 'Potato_Healthy', 'Potato_LateBlight',
-    'Rice_BacterialLeafBlight', 'Rice_BrownSpot', 'Rice_Healthy', 'Rice_LeafBlast',
-    'Rice_LeafScald', 'Rice_SheathBlight',
-    'Tea_AlgalLeafSpot', 'Tea_Anthracnose', 'Tea_BirdEyeSpot', 'Tea_BrownBlight',
-    'Tea_GrayBlight', 'Tea_Healthy', 'Tea_RedLeafSpot', 'Tea_WhiteSpot',
-    'Tomato_BacterialSpot', 'Tomato_EarlyBlight', 'Tomato_Healthy',
-    'Tomato_LateBlight', 'Tomato_LeafMold', 'Tomato_MosaicVirus',
-    'Tomato_SeptoriaLeafSpot', 'Tomato_SpiderMites', 'Tomato_TargetSpot',
+    'Maize_Blight','Maize_CommonRust','Maize_GrayLeafSpot','Maize_Healthy',
+    'Potato_EarlyBlight','Potato_Healthy','Potato_LateBlight',
+    'Rice_BacterialLeafBlight','Rice_BrownSpot','Rice_Healthy','Rice_LeafBlast',
+    'Rice_LeafScald','Rice_SheathBlight',
+    'Tea_AlgalLeafSpot','Tea_Anthracnose','Tea_BirdEyeSpot','Tea_BrownBlight',
+    'Tea_GrayBlight','Tea_Healthy','Tea_RedLeafSpot','Tea_WhiteSpot',
+    'Tomato_BacterialSpot','Tomato_EarlyBlight','Tomato_Healthy',
+    'Tomato_LateBlight','Tomato_LeafMold','Tomato_MosaicVirus',
+    'Tomato_SeptoriaLeafSpot','Tomato_SpiderMites','Tomato_TargetSpot',
     'Tomato_YellowLeafCurlVirus'
 ]
 
@@ -110,19 +101,18 @@ avg_temp = st.number_input("Average Temperature", value=25.0)
 humidity = st.number_input("Humidity", value=70.0)
 rainfall = st.number_input("Rainfall", value=100.0)
 
-st.header("Upload Image")
-uploaded_file = st.file_uploader("Upload leaf image", type=["jpg", "jpeg", "png"])
+uploaded_file = st.file_uploader("Upload leaf image", type=["jpg","jpeg","png"])
 
 predicted_class = None
 disease_risk = 0
 
 
 # -----------------------------
-# DISEASE PREDICTION (FIXED PIPELINE)
+# DISEASE PREDICTION (FIXED ROOT ISSUE)
 # -----------------------------
 if uploaded_file is not None:
 
-    image = Image.open(uploaded_file)
+    image = Image.open(uploaded_file).convert("RGB")
     st.image(image, use_container_width=True)
 
     interpreter = load_disease_model()
@@ -130,36 +120,34 @@ if uploaded_file is not None:
     input_details = interpreter.get_input_details()
     output_details = interpreter.get_output_details()
 
-    img = image.resize((224, 224)).convert("RGB")
-    img = np.array(img)
+    # 🔥 ALWAYS match training preprocessing (safe universal version)
+    img = image.resize((224, 224))
+    img = np.array(img, dtype=np.float32)
 
-    # IMPORTANT: match model dtype exactly
-    dtype = input_details[0]['dtype']
-
-    if dtype == np.float32:
-        img = img.astype(np.float32) / 255.0
-    else:
-        img = img.astype(dtype)
-
+    img = img / 255.0  # force normalization (no conditional guessing)
     img = np.expand_dims(img, axis=0)
 
-    interpreter.set_tensor(input_details[0]['index'], img)
+    interpreter.set_tensor(input_details[0]["index"], img)
     interpreter.invoke()
 
-    prediction = interpreter.get_tensor(output_details[0]['index']).flatten()
+    prediction = interpreter.get_tensor(output_details[0]["index"])
+    prediction = np.array(prediction).flatten()
 
-    st.write("RAW OUTPUT:", prediction)
+    # 🔥 DEBUG (keep for diagnosis)
+    st.write("RAW:", prediction)
     st.write("TOP 3:", np.argsort(prediction)[-3:])
+    st.write("TOP 3 VALUES:", np.sort(prediction)[-3:])
+    st.write("SUM:", np.sum(prediction))
 
-    # NO forced softmax unless needed
-    if np.max(prediction) > 1.5:
+    # 🔥 FIX: ONLY apply softmax if clearly logits
+    if np.sum(prediction) > 1.5:
         exp = np.exp(prediction - np.max(prediction))
         prediction = exp / np.sum(exp)
 
     idx = int(np.argmax(prediction))
+    confidence = float(prediction[idx])
 
     predicted_class = class_names[idx] if idx < len(class_names) else "Unknown"
-    confidence = float(prediction[idx])
 
     st.write("Disease:", predicted_class)
     st.write("Confidence:", confidence)
@@ -191,10 +179,61 @@ if predicted_class is not None:
     st.subheader("Disease Risk")
     st.write(disease_risk)
 
-    gc.collect()
-
 
 # -----------------------------
-# REST OF YOUR PIPELINE (UNCHANGED)
+# RECOMMENDATIONS (UNCHANGED LOGIC)
 # -----------------------------
-# (Yield, Price, Recommendations stay EXACTLY as yours)
+st.header("Recommendations")
+
+HEALTHY_CLASSES = {
+    "Maize_Healthy","Rice_Healthy","Tea_Healthy","Potato_Healthy","Tomato_Healthy"
+}
+
+DISEASE_RECOMMENDATIONS = {
+    "Rice_LeafBlast": ["Improve drainage", "Reduce nitrogen", "Use fungicide"],
+    "Rice_BacterialLeafBlight": ["Improve sanitation", "Avoid excess nitrogen"],
+    "Potato_LateBlight": ["Remove infected plants", "Avoid irrigation"],
+    "Tomato_YellowLeafCurlVirus": ["Control whiteflies", "Remove plants"],
+    "Tomato_MosaicVirus": ["Disinfect tools", "Remove plants"]
+}
+
+def generate_recommendations(disease, health_score, disease_risk):
+
+    rec = []
+
+    if health_score >= 90:
+        rec.append("Crop health is excellent.")
+    elif health_score >= 70:
+        rec.append("Crop health is good.")
+    elif health_score >= 50:
+        rec.append("Crop health is declining.")
+    else:
+        rec.append("Crop health is poor.")
+
+    try:
+        risk_val = float(disease_risk)
+    except:
+        risk_val = 0
+
+    rec.append(f"Disease risk level: {risk_val}")
+
+    if disease in HEALTHY_CLASSES:
+        rec.append("No disease detected.")
+    elif disease in DISEASE_RECOMMENDATIONS:
+        rec.extend(DISEASE_RECOMMENDATIONS[disease])
+    else:
+        rec.append("Monitor crop closely.")
+
+    return rec
+
+
+if predicted_class is not None:
+
+    recommendations = generate_recommendations(
+        predicted_class,
+        health_score,
+        disease_risk
+    )
+
+    for r in recommendations:
+        st.write("•", r)
