@@ -23,7 +23,7 @@ st.divider()
 BASE_URL = "https://huggingface.co/Jhumpa30/agriai-models/resolve/main/"
 
 # -----------------------------
-# SAFE DOWNLOAD (STREAMED)
+# DOWNLOAD HELPER (SAFE)
 # -----------------------------
 def get_file(filename):
     os.makedirs("models", exist_ok=True)
@@ -33,12 +33,11 @@ def get_file(filename):
         return path
 
     url = BASE_URL + filename
-
     r = requests.get(url, stream=True, timeout=60)
     r.raise_for_status()
 
     with open(path, "wb") as f:
-        for chunk in r.iter_content(chunk_size=1024 * 1024):
+        for chunk in r.iter_content(1024 * 1024):
             if chunk:
                 f.write(chunk)
 
@@ -53,16 +52,13 @@ if "predicted_yield" not in st.session_state:
 
 
 # -----------------------------
-# DISEASE MODEL (TFLITE - MEMORY SAFE)
+# DISEASE MODEL (TFLITE)
 # -----------------------------
 def load_disease_model():
     if "tflite_model" not in st.session_state:
-
         path = get_file("best_crop_model.tflite")
-
         interpreter = tf.lite.Interpreter(model_path=path)
         interpreter.allocate_tensors()
-
         st.session_state.tflite_model = interpreter
 
     return st.session_state.tflite_model
@@ -83,11 +79,10 @@ def load_risk_model():
 # -----------------------------
 @st.cache_resource
 def load_price_model():
-    return (
-        joblib.load(get_file("market_price_model_v2.pkl")),
-        joblib.load(get_file("market_price_scaler.pkl")),
-        joblib.load(get_file("market_price_columns_v2.pkl"))
-    )
+    model = joblib.load(get_file("market_price_model_v2.pkl"))
+    scaler = joblib.load(get_file("market_price_scaler.pkl"))
+    cols = joblib.load(get_file("market_price_columns_v2.pkl"))
+    return model, scaler, cols
 
 
 # -----------------------------
@@ -176,7 +171,7 @@ if predicted_class is not None:
 
 
 # -----------------------------
-# YIELD (🔥 FIXED HERE)
+# YIELD (FIXED + MEMORY SAFE)
 # -----------------------------
 if predicted_class is not None:
 
@@ -203,7 +198,6 @@ if predicted_class is not None:
 
     if st.button("Predict Yield"):
 
-        # 🔥 LAZY LOAD (ONLY WHEN NEEDED)
         with st.spinner("Loading yield model..."):
             model = joblib.load(get_file("yield_prediction_model.pkl"))
             columns = joblib.load(get_file("yield_prediction_columns.pkl"))
@@ -235,7 +229,6 @@ if predicted_class is not None:
 
         st.write("Yield:", st.session_state.predicted_yield)
 
-        # 🔥 FREE MEMORY IMMEDIATELY
         del model
         del columns
         gc.collect()
