@@ -184,9 +184,13 @@ if uploaded_file is not None:
     interpreter.set_tensor(input_details[0]['index'], img)
     interpreter.invoke()
 
-    # FIX: prediction must stay INSIDE block
     prediction = interpreter.get_tensor(output_details[0]['index'])
     prediction = np.array(prediction).flatten()
+
+    # 🔍 DEBUG LINES (PUT HERE)
+    st.write("RAW OUTPUT:", prediction)
+    st.write("TOP 3 INDICES:", np.argsort(prediction)[-3:])
+    st.write("TOP 3 VALUES:", np.sort(prediction)[-3:])
 
     # optional softmax safety
     if np.max(prediction) > 1 or np.min(prediction) < 0:
