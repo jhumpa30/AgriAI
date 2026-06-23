@@ -6,7 +6,7 @@ import pandas as pd
 import os
 import requests
 import tensorflow as tf
-from threading import Lock
+import gc
 
 # -----------------------------
 # PAGE CONFIG
@@ -22,10 +22,8 @@ st.divider()
 # -----------------------------
 BASE_URL = "https://huggingface.co/Jhumpa30/agriai-models/resolve/main/"
 
-MODEL_LOCK = Lock()   # prevents race conditions
-
 # -----------------------------
-# SAFE DOWNLOAD (IMPORTANT FIX)
+# SAFE DOWNLOAD (STREAMED)
 # -----------------------------
 def get_file(filename):
     os.makedirs("models", exist_ok=True)
@@ -36,22 +34,13 @@ def get_file(filename):
 
     url = BASE_URL + filename
 
-    with MODEL_LOCK:   # prevents double-download crashes
-        if os.path.exists(path):
-            return path
+    r = requests.get(url, stream=True, timeout=60)
+    r.raise_for_status()
 
-        try:
-            r = requests.get(url, stream=True, timeout=60)
-            r.raise_for_status()
-
-            with open(path, "wb") as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
-
-        except Exception as e:
-            st.error(f"Model download failed: {filename}")
-            raise e
+    with open(path, "wb") as f:
+        for chunk in r.iter_content(chunk_size=1024 * 1024):
+            if chunk:
+                f.write(chunk)
 
     return path
 
@@ -64,16 +53,19 @@ if "predicted_yield" not in st.session_state:
 
 
 # -----------------------------
-# TFLITE MODEL (STABLE CACHE)
+# DISEASE MODEL (TFLITE - MEMORY SAFE)
 # -----------------------------
-@st.cache_resource
 def load_disease_model():
-    path = get_file("best_crop_model.tflite")
+    if "tflite_model" not in st.session_state:
 
-    interpreter = tf.lite.Interpreter(model_path=path)
-    interpreter.allocate_tensors()
+        path = get_file("best_crop_model.tflite")
 
-    return interpreter
+        interpreter = tf.lite.Interpreter(model_path=path)
+        interpreter.allocate_tensors()
+
+        st.session_state.tflite_model = interpreter
+
+    return st.session_state.tflite_model
 
 
 # -----------------------------
@@ -87,32 +79,13 @@ def load_risk_model():
 
 
 # -----------------------------
-# YIELD MODELS
+# SHARED YIELD MODEL (IMPORTANT FIX)
 # -----------------------------
 @st.cache_resource
-def load_yield_models():
-    return {
-        "rice": (
-            joblib.load(get_file("yield_prediction_model.pkl")),
-            joblib.load(get_file("yield_prediction_columns.pkl"))
-        ),
-        "maize": (
-            joblib.load(get_file("yield_prediction_model.pkl")),
-            joblib.load(get_file("yield_prediction_columns.pkl"))
-        ),
-        "potato": (
-            joblib.load(get_file("yield_prediction_model.pkl")),
-            joblib.load(get_file("yield_prediction_columns.pkl"))
-        ),
-        "tea": (
-            joblib.load(get_file("tea_yield_model_v3.pkl")),
-            joblib.load(get_file("tea_yield_columns_v3.pkl"))
-        ),
-        "tomato": (
-            joblib.load(get_file("tomato_yield_model_v2.pkl")),
-            joblib.load(get_file("tomato_yield_columns_v2.pkl"))
-        )
-    }
+def load_shared_yield_model():
+    model = joblib.load(get_file("yield_prediction_model.pkl"))
+    cols = joblib.load(get_file("yield_prediction_columns.pkl"))
+    return model, cols
 
 
 # -----------------------------
@@ -182,6 +155,8 @@ if uploaded_file is not None:
     st.write("Disease:", predicted_class)
     st.write("Confidence:", confidence)
 
+    gc.collect()
+
 
 # -----------------------------
 # HEALTH SCORE
@@ -207,13 +182,15 @@ if predicted_class is not None:
     st.subheader("Disease Risk")
     st.write(disease_risk)
 
+    gc.collect()
+
 
 # -----------------------------
 # YIELD
 # -----------------------------
 if predicted_class is not None:
 
-    yield_models = load_yield_models()
+    model, columns = load_shared_yield_model()
 
     crop_map = {
         "Rice": "rice",
@@ -227,18 +204,16 @@ if predicted_class is not None:
 
     st.write("Crop:", crop_type)
 
-    crop_year = st.number_input("Year", value=2025, key="year")
-    area = st.number_input("Area", value=1.0, key="area")
-    rainfall_y = st.number_input("Annual Rainfall", value=1000.0, key="rain")
-    fertilizer = st.number_input("Fertilizer", value=50.0, key="fert")
-    pesticide = st.number_input("Pesticide", value=5.0, key="pest")
-    avg_temp_y = st.number_input("Avg Temp", value=28.0, key="temp")
-    max_temp = st.number_input("Max Temp", value=35.0, key="max")
-    min_temp = st.number_input("Min Temp", value=20.0, key="min")
+    crop_year = st.number_input("Year", value=2025)
+    area = st.number_input("Area", value=1.0)
+    rainfall_y = st.number_input("Annual Rainfall", value=1000.0)
+    fertilizer = st.number_input("Fertilizer", value=50.0)
+    pesticide = st.number_input("Pesticide", value=5.0)
+    avg_temp_y = st.number_input("Avg Temp", value=28.0)
+    max_temp = st.number_input("Max Temp", value=35.0)
+    min_temp = st.number_input("Min Temp", value=20.0)
 
-    if st.button("Predict Yield", key="yield_btn"):
-
-        model, columns = yield_models[crop_type]
+    if st.button("Predict Yield"):
 
         row = {c: 0 for c in columns}
 
@@ -264,7 +239,10 @@ if predicted_class is not None:
         X = pd.DataFrame([row])[columns]
 
         st.session_state.predicted_yield = model.predict(X)[0]
+
         st.write("Yield:", st.session_state.predicted_yield)
+
+        gc.collect()
 
 
 # -----------------------------
@@ -276,12 +254,12 @@ if predicted_class is not None:
 
     price_model, price_scaler, price_columns = load_price_model()
 
-    demand = st.number_input("Demand", value=1.0, key="demand")
-    supply = st.number_input("Supply", value=1.0, key="supply")
-    inflation = st.number_input("Inflation", value=5.0, key="inflation")
-    transport = st.number_input("Transport Cost", value=10.0, key="transport")
+    demand = st.number_input("Demand", value=1.0)
+    supply = st.number_input("Supply", value=1.0)
+    inflation = st.number_input("Inflation", value=5.0)
+    transport = st.number_input("Transport Cost", value=10.0)
 
-    if st.button("Predict Price", key="price_btn"):
+    if st.button("Predict Price"):
 
         if st.session_state.predicted_yield is None:
             st.error("Predict yield first")
@@ -301,3 +279,5 @@ if predicted_class is not None:
         price = price_model.predict(price_input)[0]
 
         st.write("Price:", price)
+
+        gc.collect()
