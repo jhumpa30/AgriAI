@@ -198,16 +198,17 @@ if uploaded_file is not None:
         prediction = exp / np.sum(exp)
 
     class_names = [
-        'Maize_Blight','Maize_CommonRust','Maize_GrayLeafSpot','Maize_Healthy',
-        'Potato_EarlyBlight','Potato_Healthy','Potato_LateBlight',
-        'Rice_BacterialLeafBlight','Rice_BrownSpot','Rice_Healthy','Rice_LeafBlast',
-        'Rice_LeafScald','Rice_SheathBlight',
-        'Tea_AlgalLeafSpot','Tea_Anthracnose','Tea_BirdEyeSpot','Tea_BrownBlight',
-        'Tea_GrayBlight','Tea_Healthy','Tea_RedLeafSpot','Tea_WhiteSpot',
-        'Tomato_BacterialSpot','Tomato_EarlyBlight','Tomato_Healthy','Tomato_LateBlight',
-        'Tomato_LeafMold','Tomato_MosaicVirus','Tomato_SeptoriaLeafSpot',
-        'Tomato_SpiderMites','Tomato_TargetSpot','Tomato_YellowLeafCurlVirus'
-    ]
+    'Maize_Blight', 'Maize_CommonRust', 'Maize_GrayLeafSpot', 'Maize_Healthy',
+    'Potato_EarlyBlight', 'Potato_Healthy', 'Potato_LateBlight',
+    'Rice_BacterialLeafBlight', 'Rice_BrownSpot', 'Rice_Healthy', 'Rice_LeafBlast',
+    'Rice_LeafScald', 'Rice_SheathBlight',
+    'Tea_AlgalLeafSpot', 'Tea_Anthracnose', 'Tea_BirdEyeSpot', 'Tea_BrownBlight',
+    'Tea_GrayBlight', 'Tea_Healthy', 'Tea_RedLeafSpot', 'Tea_WhiteSpot',
+    'Tomato_BacterialSpot', 'Tomato_EarlyBlight', 'Tomato_Healthy',
+    'Tomato_LateBlight', 'Tomato_LeafMold', 'Tomato_MosaicVirus',
+    'Tomato_SeptoriaLeafSpot', 'Tomato_SpiderMites', 'Tomato_TargetSpot',
+    'Tomato_YellowLeafCurlVirus'
+]
 
     idx = int(np.argmax(prediction))
     confidence = float(prediction[idx])
