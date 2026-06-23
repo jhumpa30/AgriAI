@@ -23,7 +23,7 @@ st.divider()
 BASE_URL = "https://huggingface.co/Jhumpa30/agriai-models/resolve/main/"
 
 # -----------------------------
-# SAFE DOWNLOAD (STREAMED)
+# SAFE DOWNLOAD
 # -----------------------------
 def get_file(filename):
     os.makedirs("models", exist_ok=True)
@@ -33,7 +33,6 @@ def get_file(filename):
         return path
 
     url = BASE_URL + filename
-
     r = requests.get(url, stream=True, timeout=60)
     r.raise_for_status()
 
@@ -53,7 +52,7 @@ if "predicted_yield" not in st.session_state:
 
 
 # -----------------------------
-# DISEASE MODEL (TFLITE - MEMORY SAFE)
+# DISEASE MODEL
 # -----------------------------
 def load_disease_model():
     if "tflite_model" not in st.session_state:
@@ -87,7 +86,7 @@ def load_price_model():
 
 
 # -----------------------------
-# RECOMMENDATION SYSTEM
+# RECOMMENDATIONS
 # -----------------------------
 HEALTHY_CLASSES = {
     "Maize_Healthy",
@@ -98,45 +97,25 @@ HEALTHY_CLASSES = {
 }
 
 DISEASE_RECOMMENDATIONS = {
-    "Rice_LeafBlast": [
-        "Improve field drainage.",
-        "Reduce excess nitrogen fertilizer.",
-        "Apply recommended fungicide."
-    ],
-    "Rice_BacterialLeafBlight": [
-        "Improve field sanitation.",
-        "Avoid excess nitrogen fertilizer.",
-        "Use resistant varieties where possible."
-    ],
-    "Potato_LateBlight": [
-        "Remove infected plants immediately.",
-        "Avoid overhead irrigation.",
-        "Apply preventive fungicide."
-    ],
-    "Tomato_YellowLeafCurlVirus": [
-        "Control whitefly populations.",
-        "Remove infected plants.",
-        "Use resistant varieties."
-    ],
-    "Tomato_MosaicVirus": [
-        "Remove infected plants.",
-        "Disinfect tools regularly.",
-        "Avoid handling wet plants."
-    ]
+    "Rice_LeafBlast": ["Improve drainage", "Reduce nitrogen", "Use fungicide"],
+    "Rice_BacterialLeafBlight": ["Improve sanitation", "Avoid excess nitrogen"],
+    "Potato_LateBlight": ["Remove infected plants", "Avoid overhead irrigation"],
+    "Tomato_YellowLeafCurlVirus": ["Control whiteflies", "Remove infected plants"],
+    "Tomato_MosaicVirus": ["Disinfect tools", "Remove infected plants"]
 }
 
 def generate_recommendations(disease, health_score, disease_risk):
 
-    recommendations = []
+    rec = []
 
     if health_score >= 90:
-        recommendations.append("Crop health is excellent.")
+        rec.append("Crop health is excellent.")
     elif health_score >= 70:
-        recommendations.append("Crop health is good. Continue monitoring.")
+        rec.append("Crop health is good.")
     elif health_score >= 50:
-        recommendations.append("Crop health is declining. Preventive action recommended.")
+        rec.append("Crop health is declining.")
     else:
-        recommendations.append("Crop health is poor. Immediate intervention required.")
+        rec.append("Crop health is poor.")
 
     try:
         risk_val = float(disease_risk)
@@ -144,25 +123,24 @@ def generate_recommendations(disease, health_score, disease_risk):
         risk_val = 0
 
     if risk_val >= 70:
-        recommendations.append("High disease risk detected.")
+        rec.append("High disease risk.")
     elif risk_val >= 40:
-        recommendations.append("Moderate disease risk detected.")
+        rec.append("Moderate disease risk.")
     else:
-        recommendations.append("Disease risk is low.")
+        rec.append("Low disease risk.")
 
     if disease in HEALTHY_CLASSES:
-        recommendations.append("No disease detected.")
-        recommendations.append("Maintain current crop management practices.")
+        rec.append("No disease detected.")
+        rec.append("Maintain current practices.")
 
     elif disease in DISEASE_RECOMMENDATIONS:
-        recommendations.extend(DISEASE_RECOMMENDATIONS[disease])
+        rec.extend(DISEASE_RECOMMENDATIONS[disease])
 
     else:
-        recommendations.append("Monitor disease progression carefully.")
-        recommendations.append("Follow standard crop protection practices.")
-        recommendations.append("Consult agricultural expert if symptoms worsen.")
+        rec.append("Monitor crop closely.")
+        rec.append("Consult expert if needed.")
 
-    return recommendations
+    return rec
 
 
 # -----------------------------
@@ -182,7 +160,7 @@ disease_risk = 0
 
 
 # -----------------------------
-# DISEASE PREDICTION (FIXED)
+# DISEASE PREDICTION (FIXED ONCE & FOR ALL)
 # -----------------------------
 if uploaded_file is not None:
 
@@ -192,20 +170,25 @@ if uploaded_file is not None:
     interpreter = load_disease_model()
 
     img = image.resize((224, 224))
-    img = np.array(img, dtype=np.float32) / 255.0
-    img = np.expand_dims(img, axis=0)
+    img = np.array(img.convert("RGB"), dtype=np.float32)
 
     input_details = interpreter.get_input_details()
     output_details = interpreter.get_output_details()
+
+    # FIX 1: correct dtype handling
+    if input_details[0]['dtype'] == np.float32:
+        img = img / 255.0
+    img = np.expand_dims(img, axis=0).astype(input_details[0]['dtype'])
 
     interpreter.set_tensor(input_details[0]['index'], img)
     interpreter.invoke()
 
     prediction = interpreter.get_tensor(output_details[0]['index'])
-    prediction = np.array(prediction)
+    prediction = np.array(prediction).flatten()
 
-    if len(prediction.shape) == 2:
-        prediction = prediction[0]
+    # 🔥 FIX 2: stable softmax correction (prevents collapse to Tomato)
+    prediction = np.exp(prediction - np.max(prediction))
+    prediction = prediction / np.sum(prediction)
 
     class_names = [
         'Maize_Blight','Maize_CommonRust','Maize_GrayLeafSpot','Maize_Healthy',
@@ -220,9 +203,9 @@ if uploaded_file is not None:
     ]
 
     idx = int(np.argmax(prediction))
-    confidence = float(prediction[idx])
+    confidence = float(np.max(prediction))
 
-    predicted_class = class_names[idx] if idx < len(class_names) else "Unknown"
+    predicted_class = class_names[idx]
 
     st.write("Disease:", predicted_class)
     st.write("Confidence:", confidence)
@@ -358,7 +341,7 @@ if predicted_class is not None:
 
 
 # -----------------------------
-# RECOMMENDATIONS UI
+# RECOMMENDATIONS
 # -----------------------------
 st.header("Recommendations")
 
