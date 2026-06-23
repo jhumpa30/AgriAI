@@ -108,7 +108,7 @@ disease_risk = 0
 
 
 # -----------------------------
-# DISEASE PREDICTION (FIXED ROOT ISSUE)
+# DISEASE PREDICTION
 # -----------------------------
 if uploaded_file is not None:
 
@@ -120,11 +120,11 @@ if uploaded_file is not None:
     input_details = interpreter.get_input_details()
     output_details = interpreter.get_output_details()
 
-    # 🔥 ALWAYS match training preprocessing (safe universal version)
     img = image.resize((224, 224))
     img = np.array(img, dtype=np.float32)
 
-    img = img / 255.0  # force normalization (no conditional guessing)
+    # IMPORTANT:
+    # NO /255.0 normalization
     img = np.expand_dims(img, axis=0)
 
     interpreter.set_tensor(input_details[0]["index"], img)
@@ -133,27 +133,19 @@ if uploaded_file is not None:
     prediction = interpreter.get_tensor(output_details[0]["index"])
     prediction = np.array(prediction).flatten()
 
-    # 🔥 DEBUG (keep for diagnosis)
-    st.write("RAW:", prediction)
-    st.write("TOP 3:", np.argsort(prediction)[-3:])
-    st.write("TOP 3 VALUES:", np.sort(prediction)[-3:])
-    st.write("SUM:", np.sum(prediction))
-
-    # 🔥 FIX: ONLY apply softmax if clearly logits
-    if np.sum(prediction) > 1.5:
-        exp = np.exp(prediction - np.max(prediction))
-        prediction = exp / np.sum(exp)
-
     idx = int(np.argmax(prediction))
     confidence = float(prediction[idx])
 
-    predicted_class = class_names[idx] if idx < len(class_names) else "Unknown"
+    predicted_class = (
+        class_names[idx]
+        if idx < len(class_names)
+        else "Unknown"
+    )
 
     st.write("Disease:", predicted_class)
     st.write("Confidence:", confidence)
 
     gc.collect()
-
 
 # -----------------------------
 # HEALTH SCORE
@@ -178,6 +170,105 @@ if predicted_class is not None:
 
     st.subheader("Disease Risk")
     st.write(disease_risk)
+#------------------------------
+#YIELD
+# -----------------------------
+if predicted_class is not None:
+
+    crop_map = {
+        "Rice": "rice",
+        "Maize": "maize",
+        "Potato": "potato",
+        "Tea": "tea",
+        "Tomato": "tomato"
+    }
+
+    crop_type = crop_map.get(predicted_class.split("_")[0])
+
+    st.write("Crop:", crop_type)
+
+    crop_year = st.number_input("Year", value=2025)
+    area = st.number_input("Area", value=1.0)
+    rainfall_y = st.number_input("Annual Rainfall", value=1000.0)
+    fertilizer = st.number_input("Fertilizer", value=50.0)
+    pesticide = st.number_input("Pesticide", value=5.0)
+    avg_temp_y = st.number_input("Avg Temp", value=28.0)
+    max_temp = st.number_input("Max Temp", value=35.0)
+    min_temp = st.number_input("Min Temp", value=20.0)
+
+    if st.button("Predict Yield"):
+
+        model = joblib.load(get_file("yield_prediction_model.pkl"))
+        columns = joblib.load(get_file("yield_prediction_columns.pkl"))
+
+        row = {c: 0 for c in columns}
+
+        base = {
+            "Crop_Year": crop_year,
+            "Area": area,
+            "Annual_Rainfall": rainfall_y,
+            "Fertilizer": fertilizer,
+            "Pesticide": pesticide,
+            "Avg_Temperature": avg_temp_y,
+            "Max_Temperature": max_temp,
+            "Min_Temperature": min_temp
+        }
+
+        for k, v in base.items():
+            if k in row:
+                row[k] = v
+
+        crop_col = f"Crop_{crop_type.capitalize()}"
+        if crop_col in row:
+            row[crop_col] = 1
+
+        X = pd.DataFrame([row])[columns]
+
+        st.session_state.predicted_yield = model.predict(X)[0]
+
+        st.write("Yield:", st.session_state.predicted_yield)
+
+        del model, columns
+        gc.collect()
+
+
+# -----------------------------
+# PRICE
+# -----------------------------
+if predicted_class is not None:
+
+    st.header("Market Price")
+
+    price_model, price_scaler, price_columns = load_price_model()
+
+    demand = st.number_input("Demand", value=1.0)
+    supply = st.number_input("Supply", value=1.0)
+    inflation = st.number_input("Inflation", value=5.0)
+    transport = st.number_input("Transport Cost", value=10.0)
+
+    if st.button("Predict Price"):
+
+        if st.session_state.predicted_yield is None:
+            st.error("Predict yield first")
+            st.stop()
+
+        price_input = pd.DataFrame([{
+            "Demand_Index": demand,
+            "Supply_Index": supply,
+            "Inflation_Rate": inflation,
+            "Transport_Cost": transport,
+            "predicted_yield": st.session_state.predicted_yield
+        }])
+
+        price_input = price_input.reindex(columns=price_columns, fill_value=0)
+        price_input = price_scaler.transform(price_input)
+
+        price = price_model.predict(price_input)[0]
+
+        st.write("Price:", price)
+
+        gc.collect()
+
 
 
 # -----------------------------
