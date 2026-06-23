@@ -272,50 +272,136 @@ if predicted_class is not None:
 
 
 # -----------------------------
-# RECOMMENDATIONS (UNCHANGED LOGIC)
+# RECOMMENDATIONS
 # -----------------------------
-st.header("Recommendations")
 
 HEALTHY_CLASSES = {
-    "Maize_Healthy","Rice_Healthy","Tea_Healthy","Potato_Healthy","Tomato_Healthy"
+    "Maize_Healthy",
+    "Rice_Healthy",
+    "Tea_Healthy",
+    "Potato_Healthy",
+    "Tomato_Healthy"
 }
 
 DISEASE_RECOMMENDATIONS = {
-    "Rice_LeafBlast": ["Improve drainage", "Reduce nitrogen", "Use fungicide"],
-    "Rice_BacterialLeafBlight": ["Improve sanitation", "Avoid excess nitrogen"],
-    "Potato_LateBlight": ["Remove infected plants", "Avoid irrigation"],
-    "Tomato_YellowLeafCurlVirus": ["Control whiteflies", "Remove plants"],
-    "Tomato_MosaicVirus": ["Disinfect tools", "Remove plants"]
+
+    "Rice_LeafBlast": [
+        "Improve field drainage.",
+        "Reduce excess nitrogen fertilizer.",
+        "Apply recommended fungicide."
+    ],
+
+    "Rice_BacterialLeafBlight": [
+        "Improve field sanitation.",
+        "Avoid excess nitrogen fertilizer.",
+        "Use resistant varieties where possible."
+    ],
+
+    "Potato_LateBlight": [
+        "Remove infected plants immediately.",
+        "Avoid overhead irrigation.",
+        "Apply preventive fungicide."
+    ],
+
+    "Tomato_YellowLeafCurlVirus": [
+        "Control whitefly populations.",
+        "Remove infected plants.",
+        "Use resistant varieties."
+    ],
+
+    "Tomato_MosaicVirus": [
+        "Remove infected plants.",
+        "Disinfect tools regularly.",
+        "Avoid handling wet plants."
+    ]
 }
 
-def generate_recommendations(disease, health_score, disease_risk):
 
-    rec = []
+def generate_recommendations(
+    disease,
+    health_score,
+    disease_risk
+):
+
+    recommendations = []
+
+    # Health score advice
 
     if health_score >= 90:
-        rec.append("Crop health is excellent.")
+        recommendations.append(
+            "Crop health is excellent."
+        )
+
     elif health_score >= 70:
-        rec.append("Crop health is good.")
+        recommendations.append(
+            "Crop health is good. Continue regular monitoring."
+        )
+
     elif health_score >= 50:
-        rec.append("Crop health is declining.")
+        recommendations.append(
+            "Crop health is declining. Preventive action is recommended."
+        )
+
     else:
-        rec.append("Crop health is poor.")
+        recommendations.append(
+            "Crop health is poor. Immediate intervention is required."
+        )
+
+    # Risk advice
 
     try:
-        risk_val = float(disease_risk)
+        risk = float(disease_risk)
     except:
-        risk_val = 0
+        risk = 0
 
-    rec.append(f"Disease risk level: {risk_val}")
+    if risk >= 70:
+        recommendations.append(
+            "High disease risk detected."
+        )
+
+    elif risk >= 40:
+        recommendations.append(
+            "Moderate disease risk detected."
+        )
+
+    else:
+        recommendations.append(
+            "Disease risk is low."
+        )
+
+    # Disease advice
 
     if disease in HEALTHY_CLASSES:
-        rec.append("No disease detected.")
-    elif disease in DISEASE_RECOMMENDATIONS:
-        rec.extend(DISEASE_RECOMMENDATIONS[disease])
-    else:
-        rec.append("Monitor crop closely.")
 
-    return rec
+        recommendations.append(
+            "No disease detected."
+        )
+
+        recommendations.append(
+            "Maintain current crop management practices."
+        )
+
+    elif disease in DISEASE_RECOMMENDATIONS:
+
+        recommendations.extend(
+            DISEASE_RECOMMENDATIONS[disease]
+        )
+
+    else:
+
+        recommendations.append(
+            "Monitor disease progression carefully."
+        )
+
+        recommendations.append(
+            "Follow recommended crop protection practices."
+        )
+
+        recommendations.append(
+            "Consult local agricultural experts if symptoms worsen."
+        )
+
+    return recommendations
 
 
 if predicted_class is not None:
