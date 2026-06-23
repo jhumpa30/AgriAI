@@ -23,7 +23,7 @@ st.divider()
 BASE_URL = "https://huggingface.co/Jhumpa30/agriai-models/resolve/main/"
 
 # -----------------------------
-# DOWNLOAD HELPER (SAFE)
+# SAFE DOWNLOAD (STREAMED)
 # -----------------------------
 def get_file(filename):
     os.makedirs("models", exist_ok=True)
@@ -33,11 +33,12 @@ def get_file(filename):
         return path
 
     url = BASE_URL + filename
+
     r = requests.get(url, stream=True, timeout=60)
     r.raise_for_status()
 
     with open(path, "wb") as f:
-        for chunk in r.iter_content(1024 * 1024):
+        for chunk in r.iter_content(chunk_size=1024 * 1024):
             if chunk:
                 f.write(chunk)
 
@@ -52,13 +53,16 @@ if "predicted_yield" not in st.session_state:
 
 
 # -----------------------------
-# DISEASE MODEL (TFLITE)
+# DISEASE MODEL (TFLITE - MEMORY SAFE)
 # -----------------------------
 def load_disease_model():
     if "tflite_model" not in st.session_state:
+
         path = get_file("best_crop_model.tflite")
+
         interpreter = tf.lite.Interpreter(model_path=path)
         interpreter.allocate_tensors()
+
         st.session_state.tflite_model = interpreter
 
     return st.session_state.tflite_model
@@ -79,10 +83,93 @@ def load_risk_model():
 # -----------------------------
 @st.cache_resource
 def load_price_model():
-    model = joblib.load(get_file("market_price_model_v2.pkl"))
-    scaler = joblib.load(get_file("market_price_scaler.pkl"))
-    cols = joblib.load(get_file("market_price_columns_v2.pkl"))
-    return model, scaler, cols
+    return (
+        joblib.load(get_file("market_price_model_v2.pkl")),
+        joblib.load(get_file("market_price_scaler.pkl")),
+        joblib.load(get_file("market_price_columns_v2.pkl"))
+    )
+
+
+# -----------------------------
+# RECOMMENDATION SYSTEM (ADDED)
+# -----------------------------
+HEALTHY_CLASSES = {
+    "Maize_Healthy",
+    "Rice_Healthy",
+    "Tea_Healthy",
+    "Potato_Healthy",
+    "Tomato_Healthy"
+}
+
+DISEASE_RECOMMENDATIONS = {
+    "Rice_LeafBlast": [
+        "Improve field drainage.",
+        "Reduce excess nitrogen fertilizer.",
+        "Apply recommended fungicide."
+    ],
+    "Rice_BacterialLeafBlight": [
+        "Improve field sanitation.",
+        "Avoid excess nitrogen fertilizer.",
+        "Use resistant varieties where possible."
+    ],
+    "Potato_LateBlight": [
+        "Remove infected plants immediately.",
+        "Avoid overhead irrigation.",
+        "Apply preventive fungicide."
+    ],
+    "Tomato_YellowLeafCurlVirus": [
+        "Control whitefly populations.",
+        "Remove infected plants.",
+        "Use resistant varieties."
+    ],
+    "Tomato_MosaicVirus": [
+        "Remove infected plants.",
+        "Disinfect tools regularly.",
+        "Avoid handling wet plants."
+    ]
+}
+
+def generate_recommendations(disease, health_score, disease_risk):
+
+    recommendations = []
+
+    # Health score
+    if health_score >= 90:
+        recommendations.append("Crop health is excellent.")
+    elif health_score >= 70:
+        recommendations.append("Crop health is good. Continue monitoring.")
+    elif health_score >= 50:
+        recommendations.append("Crop health is declining. Preventive action recommended.")
+    else:
+        recommendations.append("Crop health is poor. Immediate intervention required.")
+
+    # Risk
+    try:
+        risk_val = float(disease_risk)
+    except:
+        risk_val = 0
+
+    if risk_val >= 70:
+        recommendations.append("High disease risk detected.")
+    elif risk_val >= 40:
+        recommendations.append("Moderate disease risk detected.")
+    else:
+        recommendations.append("Disease risk is low.")
+
+    # Disease
+    if disease in HEALTHY_CLASSES:
+        recommendations.append("No disease detected.")
+        recommendations.append("Maintain current crop management practices.")
+
+    elif disease in DISEASE_RECOMMENDATIONS:
+        recommendations.extend(DISEASE_RECOMMENDATIONS[disease])
+
+    else:
+        recommendations.append("Monitor disease progression carefully.")
+        recommendations.append("Follow standard crop protection practices.")
+        recommendations.append("Consult agricultural expert if symptoms worsen.")
+
+    return recommendations
 
 
 # -----------------------------
@@ -171,7 +258,7 @@ if predicted_class is not None:
 
 
 # -----------------------------
-# YIELD (FIXED + MEMORY SAFE)
+# YIELD
 # -----------------------------
 if predicted_class is not None:
 
@@ -198,9 +285,8 @@ if predicted_class is not None:
 
     if st.button("Predict Yield"):
 
-        with st.spinner("Loading yield model..."):
-            model = joblib.load(get_file("yield_prediction_model.pkl"))
-            columns = joblib.load(get_file("yield_prediction_columns.pkl"))
+        model = joblib.load(get_file("yield_prediction_model.pkl"))
+        columns = joblib.load(get_file("yield_prediction_columns.pkl"))
 
         row = {c: 0 for c in columns}
 
@@ -229,8 +315,7 @@ if predicted_class is not None:
 
         st.write("Yield:", st.session_state.predicted_yield)
 
-        del model
-        del columns
+        del model, columns
         gc.collect()
 
 
@@ -270,3 +355,22 @@ if predicted_class is not None:
         st.write("Price:", price)
 
         gc.collect()
+
+
+# -----------------------------
+# 🌿 RECOMMENDATIONS UI (ADDED)
+# -----------------------------
+st.header("Recommendations")
+
+if predicted_class is not None:
+
+    risk_val = disease_risk if "disease_risk" in locals() else 0
+
+    recommendations = generate_recommendations(
+        predicted_class,
+        health_score,
+        risk_val
+    )
+
+    for r in recommendations:
+        st.write("•", r)
